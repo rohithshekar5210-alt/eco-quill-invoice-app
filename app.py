@@ -34,7 +34,9 @@ st.set_page_config(
 )
 
 INVOICE_DIR = Path("invoices")
-INVOICE_DIR.mkdir(exist_ok=True)
+
+if not INVOICE_DIR.exists():
+    INVOICE_DIR.mkdir(parents=True)
 
 HISTORY_FILE = INVOICE_DIR / "invoice_history.csv"
 
