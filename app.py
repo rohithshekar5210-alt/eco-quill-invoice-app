@@ -33,10 +33,11 @@ st.set_page_config(
     page_title="Eco Quill Invoice Generator", page_icon="🧾", layout="wide"
 )
 
-INVOICE_DIR = Path("invoices")
+import tempfile
+from pathlib import Path
 
-if not INVOICE_DIR.exists():
-    INVOICE_DIR.mkdir(parents=True)
+INVOICE_DIR = Path(tempfile.gettempdir()) / "eco_quill_invoices"
+INVOICE_DIR.mkdir(parents=True, exist_ok=True)
 
 HISTORY_FILE = INVOICE_DIR / "invoice_history.csv"
 
