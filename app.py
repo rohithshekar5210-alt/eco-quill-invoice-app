@@ -15,39 +15,26 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, Image
-)
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable, Image
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-
-# =========================================================
-# APP CONFIG
-# =========================================================
-
-st.set_page_config(
-    page_title="Custom Invoice Generator", page_icon="🧾", layout="wide"
-)
+st.set_page_config(page_title="Custom Invoice Generator", page_icon="🧾", layout="wide")
 
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
-if not ASSETS_DIR.exists():
-    ASSETS_DIR.mkdir(parents=True)
+INVOICE_DIR = BASE_DIR / "invoices"
+
+# Repair old zero-byte placeholder files that should be folders.
+for folder in (ASSETS_DIR, INVOICE_DIR):
+    if folder.exists() and not folder.is_dir():
+        folder.unlink()
+    folder.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = BASE_DIR / "business_settings.json"
 LOGO_PATH = ASSETS_DIR / "business_logo.png"
 SIGNATURE_PATH = ASSETS_DIR / "digital_signature.png"
-
-INVOICE_DIR = BASE_DIR / "invoices"
-if not INVOICE_DIR.exists():
-    INVOICE_DIR.mkdir(parents=True)
 HISTORY_FILE = INVOICE_DIR / "invoice_history.csv"
-
-
-# =========================================================
-# PREMIUM COLOR PALETTE
-# =========================================================
 
 COLOR_PRIMARY_DARK = "#0B3D2E"
 COLOR_PRIMARY = "#145A32"
@@ -57,11 +44,6 @@ COLOR_TEXT = "#1C2833"
 COLOR_MUTED = "#5D6D64"
 COLOR_BORDER = "#D8E0D8"
 COLOR_ROW_TINT = "#F5F9F5"
-
-
-# =========================================================
-# DEFAULT CUSTOMIZABLE SETTINGS
-# =========================================================
 
 DEFAULT_SETTINGS = {
     "company_name": "EcoQuill",
@@ -87,126 +69,91 @@ DEFAULT_SETTINGS = {
     ),
     "email_subject_template": "{company_name} Invoice {invoice_no}",
     "email_message_template": (
-        "Dear {customer_name},\n\n"
-        "Please find attached your invoice from {company_name}.\n\n"
-        "Invoice No: {invoice_no}\n"
-        "Invoice Date: {invoice_date}\n"
-        "Grand Total: {grand_total}\n\n"
-        "Thank you for choosing {company_name}.\n\n"
-        "Regards,\n{company_name}"
+        "Dear {customer_name},\n\nPlease find attached your invoice from {company_name}.\n\n"
+        "Invoice No: {invoice_no}\nInvoice Date: {invoice_date}\nGrand Total: {grand_total}\n\n"
+        "Thank you for choosing {company_name}.\n\nRegards,\n{company_name}"
     ),
     "whatsapp_message_template": (
-        "Hello {customer_name},\n\n"
-        "Your invoice from {company_name} is ready.\n"
-        "Invoice No: {invoice_no}\n"
-        "Grand Total: {grand_total}\n\n"
-        "Please check your email for the PDF invoice.\n\n"
-        "Thank you,\n{company_name}"
+        "Hello {customer_name},\n\nYour invoice from {company_name} is ready.\n"
+        "Invoice No: {invoice_no}\nGrand Total: {grand_total}\n\n"
+        "Please check your email for the PDF invoice.\n\nThank you,\n{company_name}"
     ),
 }
 
 
-# =========================================================
-# SETTINGS FUNCTIONS
-# =========================================================
-
-
 def load_settings():
-    settings = DEFAULT_SETTINGS.copy()
-    if SETTINGS_FILE.exists():
+    result = DEFAULT_SETTINGS.copy()
+    if SETTINGS_FILE.exists() and SETTINGS_FILE.is_file():
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
-                saved_settings = json.load(file)
-            settings.update(saved_settings)
+                saved = json.load(file)
+            if isinstance(saved, dict):
+                result.update(saved)
         except Exception:
             pass
-    return settings
+    return result
 
 
-def save_settings(settings):
+def save_settings(data):
     with open(SETTINGS_FILE, "w", encoding="utf-8") as file:
-        json.dump(settings, file, indent=4, ensure_ascii=False)
+        json.dump(data, file, indent=4, ensure_ascii=False)
 
 
 def save_uploaded_image(uploaded_file, destination):
     if uploaded_file is not None:
-        with open(destination, "wb") as file:
-            file.write(uploaded_file.getbuffer())
+        destination.write_bytes(uploaded_file.getbuffer())
 
 
 settings = load_settings()
 
 
-# =========================================================
-# UNICODE FONT REGISTRATION
-# =========================================================
-
-
 def register_invoice_fonts():
-    possible_regular_fonts = [
+    regular_fonts = [
         ASSETS_DIR / "segoeui.ttf",
         Path("C:/Windows/Fonts/segoeui.ttf"),
         Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     ]
-    possible_bold_fonts = [
+    bold_fonts = [
         ASSETS_DIR / "segoeuib.ttf",
         Path("C:/Windows/Fonts/segoeuib.ttf"),
         Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
     ]
-
-    regular_path = next((p for p in possible_regular_fonts if p.exists()), None)
-    bold_path = next((p for p in possible_bold_fonts if p.exists()), None)
-
-    if regular_path and bold_path:
-        pdfmetrics.registerFont(TTFont("InvoiceRegular", str(regular_path)))
-        pdfmetrics.registerFont(TTFont("InvoiceBold", str(bold_path)))
+    regular = next((p for p in regular_fonts if p.exists() and p.is_file()), None)
+    bold = next((p for p in bold_fonts if p.exists() and p.is_file()), None)
+    if regular and bold:
+        pdfmetrics.registerFont(TTFont("InvoiceRegular", str(regular)))
+        pdfmetrics.registerFont(TTFont("InvoiceBold", str(bold)))
         return "InvoiceRegular", "InvoiceBold"
-
     return "Helvetica", "Helvetica-Bold"
 
 
 FONT_REGULAR, FONT_BOLD = register_invoice_fonts()
 
 
-# =========================================================
-# BASIC FUNCTIONS
-# =========================================================
-
-
 def clean_phone_number(phone):
-    if not phone:
-        return ""
-    return re.sub(r"\D", "", phone)
+    return re.sub(r"\D", "", phone or "")
 
 
 def format_inr(amount):
     try:
-        return f"₹ {amount:,.2f}"
+        return f"₹ {float(amount):,.2f}"
     except Exception:
         return f"₹ {amount}"
 
 
 def amount_to_words(amount):
     try:
-        rupees = int(round(amount))
-        words = num2words(rupees, lang="en_IN").title()
-        return f"{words} Rupees Only"
+        return f"{num2words(int(round(amount)), lang='en_IN').title()} Rupees Only"
     except Exception:
         return "Amount In Words Not Available"
 
 
 def safe_filename(text):
-    text = re.sub(r"[^A-Za-z0-9_-]", "_", str(text))
-    return text[:80]
+    return re.sub(r"[^A-Za-z0-9_-]", "_", str(text))[:80]
 
 
 def escape_pdf_text(value):
-    value = "" if value is None else str(value)
-    return (
-        value.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+    return str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def render_template(template, **values):
@@ -216,186 +163,145 @@ def render_template(template, **values):
         return template
 
 
-def save_invoice_history(invoice_data):
-    file_exists = HISTORY_FILE.exists()
-    fieldnames = [
-        "created_on", "invoice_no", "invoice_date", "customer_name",
-        "customer_phone", "customer_email", "taxable_value", "gst_amount",
-        "packing_charges", "grand_total", "pdf_file"
+def save_invoice_history(row):
+    fields = [
+        "created_on", "invoice_no", "invoice_date", "customer_name", "customer_phone",
+        "customer_email", "taxable_value", "gst_amount", "packing_charges", "grand_total", "pdf_file"
     ]
-
-    with open(HISTORY_FILE, mode="a", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
-        if not file_exists:
+    exists = HISTORY_FILE.exists()
+    with open(HISTORY_FILE, "a", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fields)
+        if not exists:
             writer.writeheader()
-        writer.writerow(invoice_data)
+        writer.writerow(row)
 
 
-# =========================================================
-# PDF GENERATION
-# =========================================================
-
-
-def generate_invoice_pdf(
-    company_details,
-    customer_details,
-    invoice_details,
-    product_rows,
-    totals,
-    bank_details,
-    terms_conditions,
-):
-    invoice_no_file = safe_filename(invoice_details["invoice_no"])
-    customer_file = safe_filename(customer_details["name"])
-    company_file = safe_filename(company_details["name"])
-    pdf_filename = f"{company_file}_Invoice_{invoice_no_file}_{customer_file}.pdf"
-    pdf_path = INVOICE_DIR / pdf_filename
-
+def generate_invoice_pdf(company, customer, invoice, products, totals, bank, terms):
+    pdf_name = (
+        f"{safe_filename(company['name'])}_Invoice_"
+        f"{safe_filename(invoice['invoice_no'])}_{safe_filename(customer['name'])}.pdf"
+    )
+    pdf_path = INVOICE_DIR / pdf_name
     doc = SimpleDocTemplate(
-        str(pdf_path), pagesize=A4,
-        rightMargin=14 * mm, leftMargin=14 * mm,
+        str(pdf_path), pagesize=A4, rightMargin=14 * mm, leftMargin=14 * mm,
         topMargin=12 * mm, bottomMargin=12 * mm,
     )
-
     styles = getSampleStyleSheet()
-    style_title = ParagraphStyle(
-        "TitleStyle", parent=styles["Title"], fontName=FONT_BOLD,
-        fontSize=24, textColor=colors.HexColor(COLOR_PRIMARY_DARK),
-        alignment=TA_LEFT, spaceAfter=2,
+    title = ParagraphStyle(
+        "CompanyTitle", parent=styles["Title"], fontName=FONT_BOLD,
+        fontSize=25, leading=29, textColor=colors.HexColor(COLOR_PRIMARY_DARK),
+        alignment=TA_LEFT, spaceAfter=0,
     )
-    style_subtitle = ParagraphStyle(
-        "SubtitleStyle", parent=styles["Normal"], fontName=FONT_REGULAR,
-        fontSize=9, textColor=colors.HexColor(COLOR_MUTED),
-        alignment=TA_LEFT, leading=12,
+    subtitle = ParagraphStyle(
+        "Subtitle", parent=styles["Normal"], fontName=FONT_REGULAR,
+        fontSize=9, leading=12, textColor=colors.HexColor(COLOR_MUTED), alignment=TA_LEFT,
     )
-    style_heading = ParagraphStyle(
-        "HeadingStyle", parent=styles["Heading2"], fontName=FONT_BOLD,
+    heading = ParagraphStyle(
+        "Heading", parent=styles["Heading2"], fontName=FONT_BOLD,
         fontSize=10, textColor=colors.HexColor(COLOR_PRIMARY_DARK), spaceAfter=6,
     )
-    style_normal = ParagraphStyle(
-        "NormalStyle", parent=styles["Normal"], fontName=FONT_REGULAR,
+    normal = ParagraphStyle(
+        "NormalInvoice", parent=styles["Normal"], fontName=FONT_REGULAR,
         fontSize=9, leading=12, textColor=colors.HexColor(COLOR_TEXT),
     )
-    style_normal_bold = ParagraphStyle(
-        "NormalBoldStyle", parent=style_normal, fontName=FONT_BOLD,
-    )
-    style_small = ParagraphStyle(
-        "SmallStyle", parent=styles["Normal"], fontName=FONT_REGULAR,
+    small = ParagraphStyle(
+        "SmallInvoice", parent=styles["Normal"], fontName=FONT_REGULAR,
         fontSize=8, leading=10, textColor=colors.HexColor(COLOR_MUTED),
     )
-    style_right = ParagraphStyle(
-        "RightStyle", parent=styles["Normal"], fontName=FONT_REGULAR,
-        fontSize=9, leading=12, alignment=TA_RIGHT,
-    )
-    style_table_cell = ParagraphStyle(
-        "TableCellStyle", parent=styles["Normal"], fontName=FONT_REGULAR,
-        fontSize=8, leading=11, textColor=colors.HexColor(COLOR_TEXT),
-    )
-    style_table_cell_right = ParagraphStyle(
-        "TableCellRightStyle", parent=style_table_cell, alignment=TA_RIGHT,
-    )
-    style_table_cell_center = ParagraphStyle(
-        "TableCellCenterStyle", parent=style_table_cell, alignment=TA_CENTER,
-    )
+    right = ParagraphStyle("Right", parent=normal, alignment=TA_RIGHT)
+    cell = ParagraphStyle("Cell", parent=normal, fontSize=8, leading=11)
+    cell_right = ParagraphStyle("CellRight", parent=cell, alignment=TA_RIGHT)
+    cell_center = ParagraphStyle("CellCenter", parent=cell, alignment=TA_CENTER)
 
     story = []
-
     company_block = [
-        Paragraph(escape_pdf_text(company_details["name"]), style_title),
-        Paragraph(escape_pdf_text(company_details["tagline"]), style_subtitle),
-        Paragraph(escape_pdf_text(company_details["address"]), style_subtitle),
+        Paragraph(escape_pdf_text(company["name"]), title),
+        Spacer(1, 5),
+        Paragraph(escape_pdf_text(company["tagline"]), subtitle),
+        Paragraph(escape_pdf_text(company["address"]), subtitle),
         Paragraph(
-            f"Phone: {escape_pdf_text(company_details['phone'])}  |  "
-            f"Email: {escape_pdf_text(company_details['email'])}",
-            style_subtitle,
+            f"Phone: {escape_pdf_text(company['phone'])} | Email: {escape_pdf_text(company['email'])}",
+            subtitle,
         ),
-        Paragraph(f"GSTIN: {escape_pdf_text(company_details['gstin'])}", style_subtitle),
+        Paragraph(f"GSTIN: {escape_pdf_text(company['gstin'])}", subtitle),
     ]
 
-    if LOGO_PATH.exists():
+    if LOGO_PATH.exists() and LOGO_PATH.is_file():
         try:
-            logo_flowable = Image(str(LOGO_PATH), width=24 * mm, height=15.2 * mm)
-            header_table = Table([[logo_flowable, company_block]], colWidths=[26 * mm, 154 * mm])
-            header_table.setStyle(TableStyle([
+            logo = Image(str(LOGO_PATH), width=24 * mm, height=15.2 * mm)
+            header = Table([[logo, company_block]], colWidths=[26 * mm, 154 * mm])
+            header.setStyle(TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (0, 0), (0, 0), "LEFT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
             ]))
-            story.append(header_table)
+            story.append(header)
         except Exception:
             story.extend(company_block)
     else:
         story.extend(company_block)
 
-    story.append(Spacer(1, 8))
-    story.append(HRFlowable(
-        width="100%", thickness=1.4, color=colors.HexColor(COLOR_ACCENT_GOLD)
-    ))
-    story.append(Spacer(1, 8))
+    story += [
+        Spacer(1, 8),
+        HRFlowable(width="100%", thickness=1.4, color=colors.HexColor(COLOR_ACCENT_GOLD)),
+        Spacer(1, 8),
+    ]
 
     invoice_title_style = ParagraphStyle(
-        "InvoiceTitle", parent=styles["Normal"], fontName=FONT_BOLD,
+        "InvoiceTitle", parent=normal, fontName=FONT_BOLD,
         fontSize=14, textColor=colors.white, alignment=TA_CENTER,
     )
-    title_table = Table(
-        [[Paragraph(f"<b>{escape_pdf_text(invoice_details['invoice_title'])}</b>", invoice_title_style)]],
+    invoice_title = Table(
+        [[Paragraph(f"<b>{escape_pdf_text(invoice['invoice_title'])}</b>", invoice_title_style)]],
         colWidths=[180 * mm],
     )
-    title_table.setStyle(TableStyle([
+    invoice_title.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(COLOR_PRIMARY_DARK)),
         ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor(COLOR_ACCENT_GOLD)),
         ("TOPPADDING", (0, 0), (-1, -1), 7),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
-    story.append(title_table)
-    story.append(Spacer(1, 10))
+    story += [invoice_title, Spacer(1, 10)]
 
-    billed_to = [
-        Paragraph("Billed To", style_heading),
-        Paragraph(f"<b>Name:</b> {escape_pdf_text(customer_details['name'])}", style_normal),
-        Paragraph(f"<b>Address:</b> {escape_pdf_text(customer_details['address'])}", style_normal),
-        Paragraph(f"<b>Phone:</b> {escape_pdf_text(customer_details['phone'])}", style_normal),
-        Paragraph(f"<b>WhatsApp:</b> {escape_pdf_text(customer_details['whatsapp'])}", style_normal),
-        Paragraph(f"<b>Email:</b> {escape_pdf_text(customer_details['email'] or 'Not provided')}", style_normal),
-        Paragraph(f"<b>Customer GSTIN:</b> {escape_pdf_text(customer_details['gstin'] or 'Not provided')}", style_normal),
+    billed = [
+        Paragraph("Billed To", heading),
+        Paragraph(f"<b>Name:</b> {escape_pdf_text(customer['name'])}", normal),
+        Paragraph(f"<b>Address:</b> {escape_pdf_text(customer['address'])}", normal),
+        Paragraph(f"<b>Phone:</b> {escape_pdf_text(customer['phone'])}", normal),
+        Paragraph(f"<b>WhatsApp:</b> {escape_pdf_text(customer['whatsapp'])}", normal),
+        Paragraph(f"<b>Email:</b> {escape_pdf_text(customer['email'] or 'Not provided')}", normal),
+        Paragraph(f"<b>Customer GSTIN:</b> {escape_pdf_text(customer['gstin'] or 'Not provided')}", normal),
     ]
     invoice_info = [
-        Paragraph("Invoice Details", style_heading),
-        Paragraph(f"<b>Invoice No:</b> {escape_pdf_text(invoice_details['invoice_no'])}", style_normal),
-        Paragraph(f"<b>Invoice Date:</b> {escape_pdf_text(invoice_details['invoice_date'])}", style_normal),
-        Paragraph(f"<b>Place of Supply:</b> {escape_pdf_text(invoice_details['place_of_supply'])}", style_normal),
-        Paragraph(f"<b>Payment Status:</b> {escape_pdf_text(invoice_details['payment_status'])}", style_normal),
+        Paragraph("Invoice Details", heading),
+        Paragraph(f"<b>Invoice No:</b> {escape_pdf_text(invoice['invoice_no'])}", normal),
+        Paragraph(f"<b>Invoice Date:</b> {escape_pdf_text(invoice['invoice_date'])}", normal),
+        Paragraph(f"<b>Place of Supply:</b> {escape_pdf_text(invoice['place_of_supply'])}", normal),
+        Paragraph(f"<b>Payment Status:</b> {escape_pdf_text(invoice['payment_status'])}", normal),
     ]
-
-    info_table = Table([[billed_to, invoice_info]], colWidths=[90 * mm, 90 * mm])
-    info_table.setStyle(TableStyle([
+    info = Table([[billed, invoice_info]], colWidths=[90 * mm, 90 * mm])
+    info.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor(COLOR_BORDER)),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor(COLOR_BORDER)),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FCF9")),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("PADDING", (0, 0), (-1, -1), 8),
     ]))
-    story.append(info_table)
-    story.append(Spacer(1, 12))
+    story += [info, Spacer(1, 12)]
 
-    data = [["Sr.", "Description of Goods", "HSN/SAC", "Qty", "Rate", "GST %", "Amount"]]
-    for index, row in enumerate(product_rows, start=1):
-        data.append([
-            Paragraph(str(index), style_table_cell_center),
-            Paragraph(escape_pdf_text(row["product_name"]), style_table_cell),
-            Paragraph(escape_pdf_text(row["hsn"]), style_table_cell_center),
-            Paragraph(f"{row['quantity']:,.2f}", style_table_cell_center),
-            Paragraph(format_inr(row["rate"]), style_table_cell_right),
-            Paragraph(f"{row['gst_percent']:,.2f}%", style_table_cell_center),
-            Paragraph(format_inr(row["line_amount"]), style_table_cell_right),
+    product_data = [["Sr.", "Description of Goods", "HSN/SAC", "Qty", "Rate", "GST %", "Amount"]]
+    for index, row in enumerate(products, 1):
+        product_data.append([
+            Paragraph(str(index), cell_center),
+            Paragraph(escape_pdf_text(row["product_name"]), cell),
+            Paragraph(escape_pdf_text(row["hsn"]), cell_center),
+            Paragraph(f"{row['quantity']:,.2f}", cell_center),
+            Paragraph(format_inr(row["rate"]), cell_right),
+            Paragraph(f"{row['gst_percent']:,.2f}%", cell_center),
+            Paragraph(format_inr(row["line_amount"]), cell_right),
         ])
-
     product_table = Table(
-        data,
+        product_data,
         colWidths=[12 * mm, 59 * mm, 22 * mm, 18 * mm, 26 * mm, 18 * mm, 25 * mm],
         repeatRows=1,
     )
@@ -411,58 +317,50 @@ def generate_invoice_pdf(
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
-    story.append(product_table)
-    story.append(Spacer(1, 12))
+    story += [product_table, Spacer(1, 12)]
 
-    amount_words_table = Table([
-        [Paragraph("<b>Bill Amount In Words:</b>", style_normal),
-         Paragraph(escape_pdf_text(amount_to_words(totals["grand_total"])), style_normal)]
+    words = Table([
+        [Paragraph("<b>Bill Amount In Words:</b>", normal),
+         Paragraph(escape_pdf_text(amount_to_words(totals["grand_total"])), normal)]
     ], colWidths=[45 * mm, 135 * mm])
-    amount_words_table.setStyle(TableStyle([
+    words.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(COLOR_BORDER)),
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FDFEFE")),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
-    story.append(amount_words_table)
-    story.append(Spacer(1, 8))
+    story += [words, Spacer(1, 8)]
 
-    totals_data = [
-        [Paragraph("Taxable Value", style_normal), Paragraph(format_inr(totals["taxable_value"]), style_table_cell_right)],
-        [Paragraph("Packing / Delivery Charges", style_normal), Paragraph(format_inr(totals["packing_charges"]), style_table_cell_right)],
-        [Paragraph("GST Amount", style_normal), Paragraph(format_inr(totals["gst_amount"]), style_table_cell_right)],
-        [Paragraph("<b>Grand Total</b>", style_normal_bold),
-         Paragraph(f"<b>{format_inr(totals['grand_total'])}</b>", ParagraphStyle(
-             "GrandTotalRight", parent=style_table_cell_right, fontName=FONT_BOLD, fontSize=10
-         ))],
+    total_rows = [
+        [Paragraph("Taxable Value", normal), Paragraph(format_inr(totals["taxable_value"]), cell_right)],
+        [Paragraph("Packing / Delivery Charges", normal), Paragraph(format_inr(totals["packing_charges"]), cell_right)],
+        [Paragraph("GST Amount", normal), Paragraph(format_inr(totals["gst_amount"]), cell_right)],
+        [Paragraph("<b>Grand Total</b>", normal), Paragraph(f"<b>{format_inr(totals['grand_total'])}</b>", cell_right)],
     ]
-    totals_table = Table(totals_data, colWidths=[125 * mm, 55 * mm])
-    totals_table.setStyle(TableStyle([
+    total_table = Table(total_rows, colWidths=[125 * mm, 55 * mm])
+    total_table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(COLOR_BORDER)),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(COLOR_ACCENT_GOLD_LIGHT)),
         ("LINEABOVE", (0, -1), (-1, -1), 1, colors.HexColor(COLOR_ACCENT_GOLD)),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
-    story.append(totals_table)
-    story.append(Spacer(1, 12))
+    story += [total_table, Spacer(1, 12)]
 
     bank_text = (
-        f"<b>Bank Details</b><br/>"
-        f"Bank Name: {escape_pdf_text(bank_details['bank_name'])}<br/>"
-        f"Account Name: {escape_pdf_text(bank_details['account_name'])}<br/>"
-        f"Account No: {escape_pdf_text(bank_details['account_no'])}<br/>"
-        f"IFSC Code: {escape_pdf_text(bank_details['ifsc'])}<br/>"
-        f"UPI ID: {escape_pdf_text(bank_details['upi'])}"
+        f"<b>Bank Details</b><br/>Bank Name: {escape_pdf_text(bank['bank_name'])}<br/>"
+        f"Account Name: {escape_pdf_text(bank['account_name'])}<br/>"
+        f"Account No: {escape_pdf_text(bank['account_no'])}<br/>"
+        f"IFSC Code: {escape_pdf_text(bank['ifsc'])}<br/>UPI ID: {escape_pdf_text(bank['upi'])}"
     )
     terms_text = "<b>Terms &amp; Conditions</b><br/>" + "<br/>".join(
-        [f"{i + 1}. {escape_pdf_text(term)}" for i, term in enumerate(terms_conditions)]
+        f"{i}. {escape_pdf_text(term)}" for i, term in enumerate(terms, 1)
     )
-    bottom_table = Table(
-        [[Paragraph(bank_text, style_small), Paragraph(terms_text, style_small)]],
+    bottom = Table(
+        [[Paragraph(bank_text, small), Paragraph(terms_text, small)]],
         colWidths=[90 * mm, 90 * mm],
     )
-    bottom_table.setStyle(TableStyle([
+    bottom.setStyle(TableStyle([
         ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor(COLOR_BORDER)),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor(COLOR_BORDER)),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -470,227 +368,146 @@ def generate_invoice_pdf(
         ("TOPPADDING", (0, 0), (-1, -1), 8),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
-    story.append(bottom_table)
-    story.append(Spacer(1, 14))
+    story += [bottom, Spacer(1, 14)]
 
-    signature_content = []
-    if SIGNATURE_PATH.exists():
+    signature = []
+    if SIGNATURE_PATH.exists() and SIGNATURE_PATH.is_file():
         try:
-            signature_content.append(Image(str(SIGNATURE_PATH), width=32 * mm, height=16 * mm))
+            signature.append(Image(str(SIGNATURE_PATH), width=32 * mm, height=16 * mm))
         except Exception:
             pass
-    signature_content.append(Paragraph(
-        f"<b>For {escape_pdf_text(company_details['name'])}</b><br/>Authorised Signatory",
-        style_right,
+    signature.append(Paragraph(
+        f"<b>For {escape_pdf_text(company['name'])}</b><br/>Authorised Signatory", right
     ))
-
-    signature_table = Table([["", signature_content]], colWidths=[90 * mm, 90 * mm])
+    signature_table = Table([["", signature]], colWidths=[90 * mm, 90 * mm])
     signature_table.setStyle(TableStyle([
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
     ]))
     story.append(signature_table)
-
     doc.build(story)
     return pdf_path
 
 
-# =========================================================
-# EMAIL AND WHATSAPP FUNCTIONS
-# =========================================================
-
-
 def send_invoice_email(sender_email, sender_password, recipients, subject, body, attachment_path):
+    recipients = [x.strip() for x in recipients if x and x.strip()]
     if not sender_email or not sender_password:
         return False, "Email sender ID or app password is missing."
-
-    recipients = [email.strip() for email in recipients if email and email.strip()]
     if not recipients:
         return False, "No recipient email address provided."
-
     try:
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = sender_email
         msg["To"] = ", ".join(recipients)
         msg.set_content(body)
-
         with open(attachment_path, "rb") as file:
             msg.add_attachment(
                 file.read(), maintype="application", subtype="pdf",
                 filename=os.path.basename(attachment_path),
             )
-
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(sender_email, sender_password)
             smtp.send_message(msg)
-
         return True, "Email sent successfully."
     except Exception as error:
         return False, str(error)
 
 
 def generate_whatsapp_link(customer_whatsapp, message):
-    clean_number = clean_phone_number(customer_whatsapp)
-    if not clean_number:
+    number = clean_phone_number(customer_whatsapp)
+    if not number:
         return ""
-    if len(clean_number) == 10:
-        clean_number = "91" + clean_number
-    encoded_message = urllib.parse.quote(message)
-    return f"https://wa.me/{clean_number}?text={encoded_message}"
+    if len(number) == 10:
+        number = "91" + number
+    return f"https://wa.me/{number}?text={urllib.parse.quote(message)}"
 
-
-# =========================================================
-# PREMIUM CSS
-# =========================================================
 
 st.markdown(f"""
 <style>
 .main {{ background-color: #F7FAF7; }}
 .block-container {{ padding-top: 1.5rem; padding-bottom: 2rem; }}
-.hero-card {{
-    padding: 26px 28px; border-radius: 18px;
-    background: linear-gradient(135deg, {COLOR_PRIMARY_DARK} 0%, {COLOR_PRIMARY} 55%, #1E7A4A 100%);
-    color: white; box-shadow: 0 8px 24px rgba(11, 61, 46, 0.22);
-    margin-bottom: 20px; border-bottom: 3px solid {COLOR_ACCENT_GOLD};
-}}
-.hero-title {{ font-size: 34px; font-weight: 800; margin-bottom: 4px; letter-spacing: 0.3px; }}
-.hero-subtitle {{ font-size: 15px; opacity: 0.95; }}
-.section-card {{
-    padding: 20px; border-radius: 16px; background-color: white;
-    border: 1px solid #E5E8E8; border-top: 3px solid {COLOR_ACCENT_GOLD};
-    box-shadow: 0 4px 16px rgba(0,0,0,0.04); margin-bottom: 16px;
-}}
-.success-box {{
-    padding: 14px; border-radius: 12px; background-color: {COLOR_ACCENT_GOLD_LIGHT};
-    border-left: 5px solid {COLOR_ACCENT_GOLD}; color: {COLOR_PRIMARY_DARK}; font-weight: 600;
-}}
-div.stButton > button:first-child {{
-    background-color: {COLOR_PRIMARY_DARK}; color: white; border-radius: 10px;
-    border: 1px solid {COLOR_ACCENT_GOLD}; padding: 0.6rem 1rem; font-weight: 700;
-}}
-div.stButton > button:first-child:hover {{
-    background-color: {COLOR_PRIMARY}; color: white; border-color: {COLOR_ACCENT_GOLD};
-}}
+.hero-card {{ padding: 26px 28px; border-radius: 18px; background: linear-gradient(135deg, {COLOR_PRIMARY_DARK} 0%, {COLOR_PRIMARY} 55%, #1E7A4A 100%); color: white; box-shadow: 0 8px 24px rgba(11,61,46,.22); margin-bottom: 20px; border-bottom: 3px solid {COLOR_ACCENT_GOLD}; }}
+.hero-title {{ font-size: 34px; font-weight: 800; margin-bottom: 4px; letter-spacing: .3px; }}
+.hero-subtitle {{ font-size: 15px; opacity: .95; }}
+.section-card {{ padding: 20px; border-radius: 16px; background: white; border: 1px solid #E5E8E8; border-top: 3px solid {COLOR_ACCENT_GOLD}; box-shadow: 0 4px 16px rgba(0,0,0,.04); margin-bottom: 16px; }}
+.success-box {{ padding: 14px; border-radius: 12px; background: {COLOR_ACCENT_GOLD_LIGHT}; border-left: 5px solid {COLOR_ACCENT_GOLD}; color: {COLOR_PRIMARY_DARK}; font-weight: 600; }}
+div.stButton > button:first-child {{ background: {COLOR_PRIMARY_DARK}; color: white; border-radius: 10px; border: 1px solid {COLOR_ACCENT_GOLD}; padding: .6rem 1rem; font-weight: 700; }}
 </style>
 """, unsafe_allow_html=True)
-
-
-# =========================================================
-# SIDEBAR CUSTOM TEMPLATE SETTINGS
-# =========================================================
 
 with st.sidebar:
     st.header("Template Settings")
     st.caption("Edit once and click Save. The details remain saved for future invoices.")
-
     with st.expander("Business Details", expanded=True):
-        custom_company_name = st.text_input("Business Name", value=settings["company_name"])
-        custom_company_tagline = st.text_input("Tagline", value=settings["company_tagline"])
-        custom_company_address = st.text_area("Business Address", value=settings["company_address"])
-        custom_company_phone = st.text_input("Business Phone", value=settings["company_phone"])
-        custom_company_email = st.text_input("Business Email", value=settings["company_email"])
-        custom_company_gstin = st.text_input("GSTIN / Tax Number", value=settings["company_gstin"])
-
+        company_name_setting = st.text_input("Business Name", settings["company_name"])
+        company_tagline_setting = st.text_input("Tagline", settings["company_tagline"])
+        company_address_setting = st.text_area("Business Address", settings["company_address"])
+        company_phone_setting = st.text_input("Business Phone", settings["company_phone"])
+        company_email_setting = st.text_input("Business Email", settings["company_email"])
+        company_gstin_setting = st.text_input("GSTIN / Tax Number", settings["company_gstin"])
     with st.expander("Invoice Defaults"):
-        custom_invoice_title = st.text_input("Invoice Heading", value=settings["invoice_title"])
-        custom_invoice_prefix = st.text_input("Invoice Number Prefix", value=settings["invoice_prefix"])
-        custom_place_of_supply = st.text_input("Default Place of Supply", value=settings["default_place_of_supply"])
-
+        invoice_title_setting = st.text_input("Invoice Heading", settings["invoice_title"])
+        invoice_prefix_setting = st.text_input("Invoice Number Prefix", settings["invoice_prefix"])
+        supply_setting = st.text_input("Default Place of Supply", settings["default_place_of_supply"])
     with st.expander("Bank Details"):
-        custom_bank_name = st.text_input("Bank Name", value=settings["bank_name"])
-        custom_account_name = st.text_input("Account Name", value=settings["account_name"])
-        custom_account_no = st.text_input("Account Number", value=settings["account_no"])
-        custom_ifsc_code = st.text_input("IFSC Code", value=settings["ifsc_code"])
-        custom_upi_id = st.text_input("UPI ID", value=settings["upi_id"])
-
+        bank_name_setting = st.text_input("Bank Name", settings["bank_name"])
+        account_name_setting = st.text_input("Account Name", settings["account_name"])
+        account_no_setting = st.text_input("Account Number", settings["account_no"])
+        ifsc_setting = st.text_input("IFSC Code", settings["ifsc_code"])
+        upi_setting = st.text_input("UPI ID", settings["upi_id"])
     with st.expander("Terms and Conditions"):
-        custom_terms = st.text_area(
-            "Enter one term per line",
-            value=settings["terms_conditions"],
-            height=180,
-        )
-
+        terms_setting = st.text_area("Enter one term per line", settings["terms_conditions"], height=180)
     with st.expander("Logo and Signature"):
         uploaded_logo = st.file_uploader("Upload Business Logo", type=["png", "jpg", "jpeg"])
-        if LOGO_PATH.exists():
+        if LOGO_PATH.exists() and LOGO_PATH.is_file():
             st.image(str(LOGO_PATH), caption="Current logo", width=140)
         uploaded_signature = st.file_uploader("Upload Signature Image", type=["png", "jpg", "jpeg"])
-        if SIGNATURE_PATH.exists():
+        if SIGNATURE_PATH.exists() and SIGNATURE_PATH.is_file():
             st.image(str(SIGNATURE_PATH), caption="Current signature", width=140)
-        st.caption("For best results, use a transparent PNG signature image.")
-
     with st.expander("Email and WhatsApp Templates"):
-        custom_email_subject = st.text_input(
-            "Email Subject", value=settings["email_subject_template"]
-        )
-        custom_email_message = st.text_area(
-            "Email Message", value=settings["email_message_template"], height=240
-        )
-        custom_whatsapp_message = st.text_area(
-            "WhatsApp Message", value=settings["whatsapp_message_template"], height=220
-        )
-        st.caption(
-            "Available placeholders: {company_name}, {customer_name}, {invoice_no}, "
-            "{invoice_date}, {grand_total}"
-        )
-
+        email_subject_setting = st.text_input("Email Subject", settings["email_subject_template"])
+        email_message_setting = st.text_area("Email Message", settings["email_message_template"], height=240)
+        whatsapp_setting = st.text_area("WhatsApp Message", settings["whatsapp_message_template"], height=220)
     if st.button("Save Template Settings", use_container_width=True):
-        updated_settings = {
-            "company_name": custom_company_name,
-            "company_tagline": custom_company_tagline,
-            "company_address": custom_company_address,
-            "company_phone": custom_company_phone,
-            "company_email": custom_company_email,
-            "company_gstin": custom_company_gstin,
-            "invoice_title": custom_invoice_title,
-            "invoice_prefix": custom_invoice_prefix,
-            "default_place_of_supply": custom_place_of_supply,
-            "bank_name": custom_bank_name,
-            "account_name": custom_account_name,
-            "account_no": custom_account_no,
-            "ifsc_code": custom_ifsc_code,
-            "upi_id": custom_upi_id,
-            "terms_conditions": custom_terms,
-            "email_subject_template": custom_email_subject,
-            "email_message_template": custom_email_message,
-            "whatsapp_message_template": custom_whatsapp_message,
+        updated = {
+            "company_name": company_name_setting,
+            "company_tagline": company_tagline_setting,
+            "company_address": company_address_setting,
+            "company_phone": company_phone_setting,
+            "company_email": company_email_setting,
+            "company_gstin": company_gstin_setting,
+            "invoice_title": invoice_title_setting,
+            "invoice_prefix": invoice_prefix_setting,
+            "default_place_of_supply": supply_setting,
+            "bank_name": bank_name_setting,
+            "account_name": account_name_setting,
+            "account_no": account_no_setting,
+            "ifsc_code": ifsc_setting,
+            "upi_id": upi_setting,
+            "terms_conditions": terms_setting,
+            "email_subject_template": email_subject_setting,
+            "email_message_template": email_message_setting,
+            "whatsapp_message_template": whatsapp_setting,
         }
-        save_settings(updated_settings)
+        save_settings(updated)
         save_uploaded_image(uploaded_logo, LOGO_PATH)
         save_uploaded_image(uploaded_signature, SIGNATURE_PATH)
         st.success("Template settings saved permanently.")
         st.rerun()
-
     st.divider()
     st.subheader("Email Setup")
     sender_email = os.getenv("INVOICE_EMAIL_ID", os.getenv("ECOQUILL_EMAIL_ID", settings["company_email"]))
     sender_password = os.getenv("INVOICE_EMAIL_APP_PASSWORD", os.getenv("ECOQUILL_EMAIL_APP_PASSWORD", ""))
-    if sender_password:
-        st.success("Email app password found.")
-    else:
-        st.warning("Email password not found. PDF generation and WhatsApp sharing will still work.")
-
-
-# =========================================================
-# UI HEADER
-# =========================================================
+    st.success("Email app password found.") if sender_password else st.warning("Email password not found. PDF and WhatsApp will still work.")
 
 st.markdown(f"""
-<div class="hero-card">
-    <div class="hero-title">{escape_pdf_text(settings['company_name'])} Invoice Generator</div>
-    <div class="hero-subtitle">Create professional GST-style PDF invoices using your saved business template.</div>
-</div>
+<div class="hero-card"><div class="hero-title">{escape_pdf_text(settings['company_name'])} Invoice Generator</div>
+<div class="hero-subtitle">Create professional GST-style PDF invoices using your saved business template.</div></div>
 """, unsafe_allow_html=True)
-
-
-# =========================================================
-# MAIN FORM
-# =========================================================
 
 left_col, right_col = st.columns([1.1, 0.9])
 with left_col:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Customer Details")
     customer_name = st.text_input("Customer Name", placeholder="Enter customer name")
     customer_address = st.text_area("Customer Address", placeholder="Enter customer full address")
@@ -698,107 +515,56 @@ with left_col:
     customer_whatsapp = st.text_input("Customer WhatsApp Number", placeholder="Example: 9876543210")
     customer_email = st.text_input("Customer Email Address Optional", placeholder="customer@example.com")
     customer_gstin = st.text_input("Customer GSTIN Optional", placeholder="Enter GSTIN if available")
-    st.markdown("</div>", unsafe_allow_html=True)
-
 with right_col:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
     st.subheader("Invoice Details")
-    default_invoice_no = f"{settings['invoice_prefix']}-{datetime.now().strftime('%Y%m%d-%H%M')}"
-    invoice_no = st.text_input("Invoice Number", value=default_invoice_no)
-    invoice_date = st.date_input("Invoice Date", value=date.today())
-    place_of_supply = st.text_input("Place of Supply", value=settings["default_place_of_supply"])
+    invoice_no = st.text_input("Invoice Number", f"{settings['invoice_prefix']}-{datetime.now().strftime('%Y%m%d-%H%M')}")
+    invoice_date = st.date_input("Invoice Date", date.today())
+    place_of_supply = st.text_input("Place of Supply", settings["default_place_of_supply"])
     payment_status = st.selectbox("Payment Status", ["Pending", "Paid", "Partially Paid"])
-    packing_charges = st.number_input(
-        "Packing / Delivery Charges", min_value=0.0, value=0.0, step=10.0
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    packing_charges = st.number_input("Packing / Delivery Charges", min_value=0.0, value=0.0, step=10.0)
 
-
-# =========================================================
-# PRODUCT DETAILS
-# =========================================================
-
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.subheader("Product Details")
-number_of_items = st.number_input(
-    "How many product rows?", min_value=1, max_value=20, value=1, step=1
-)
-
+number_of_items = st.number_input("How many product rows?", 1, 20, 1, 1)
 product_rows = []
 for i in range(int(number_of_items)):
     st.markdown(f"#### Product {i + 1}")
-    col1, col2, col3, col4, col5 = st.columns([2.2, 1, 1, 1, 1])
-    with col1:
-        product_name = st.text_input(
-            f"Product Name {i + 1}", value="BIO CARRY BAG", key=f"product_name_{i}"
-        )
-    with col2:
-        hsn = st.text_input(f"HSN/SAC {i + 1}", value="39232990", key=f"hsn_{i}")
-    with col3:
-        quantity = st.number_input(
-            f"Qty {i + 1}", min_value=0.0, value=1.0, step=1.0, key=f"quantity_{i}"
-        )
-    with col4:
-        rate = st.number_input(
-            f"Rate {i + 1}", min_value=0.0, value=0.0, step=1.0, key=f"rate_{i}"
-        )
-    with col5:
-        gst_percent = st.number_input(
-            f"GST % {i + 1}", min_value=0.0, max_value=100.0,
-            value=5.0, step=0.5, key=f"gst_{i}"
-        )
-
+    c1, c2, c3, c4, c5 = st.columns([2.2, 1, 1, 1, 1])
+    with c1:
+        product_name = st.text_input(f"Product Name {i + 1}", "BIO CARRY BAG", key=f"product_name_{i}")
+    with c2:
+        hsn = st.text_input(f"HSN/SAC {i + 1}", "39232990", key=f"hsn_{i}")
+    with c3:
+        quantity = st.number_input(f"Qty {i + 1}", 0.0, value=1.0, step=1.0, key=f"quantity_{i}")
+    with c4:
+        rate = st.number_input(f"Rate {i + 1}", 0.0, value=0.0, step=1.0, key=f"rate_{i}")
+    with c5:
+        gst_percent = st.number_input(f"GST % {i + 1}", 0.0, 100.0, 5.0, 0.5, key=f"gst_{i}")
     line_amount = quantity * rate
-    gst_amount_for_line = line_amount * gst_percent / 100
     product_rows.append({
-        "product_name": product_name,
-        "hsn": hsn,
-        "quantity": quantity,
-        "rate": rate,
-        "gst_percent": gst_percent,
-        "line_amount": line_amount,
-        "gst_amount": gst_amount_for_line,
+        "product_name": product_name, "hsn": hsn, "quantity": quantity,
+        "rate": rate, "gst_percent": gst_percent, "line_amount": line_amount,
+        "gst_amount": line_amount * gst_percent / 100,
     })
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# =========================================================
-# TOTAL CALCULATION
-# =========================================================
 
 taxable_value = sum(row["line_amount"] for row in product_rows)
 gst_amount = sum(row["gst_amount"] for row in product_rows)
 grand_total = taxable_value + gst_amount + packing_charges
-
-metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-metric_col1.metric("Taxable Value", format_inr(taxable_value))
-metric_col2.metric("GST Amount", format_inr(gst_amount))
-metric_col3.metric("Packing / Delivery", format_inr(packing_charges))
-metric_col4.metric("Grand Total", format_inr(grand_total))
-
-
-# =========================================================
-# GENERATE INVOICE
-# =========================================================
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Taxable Value", format_inr(taxable_value))
+m2.metric("GST Amount", format_inr(gst_amount))
+m3.metric("Packing / Delivery", format_inr(packing_charges))
+m4.metric("Grand Total", format_inr(grand_total))
 
 company_details = {
-    "name": settings["company_name"],
-    "tagline": settings["company_tagline"],
-    "address": settings["company_address"],
-    "phone": settings["company_phone"],
-    "email": settings["company_email"],
-    "gstin": settings["company_gstin"],
+    "name": settings["company_name"], "tagline": settings["company_tagline"],
+    "address": settings["company_address"], "phone": settings["company_phone"],
+    "email": settings["company_email"], "gstin": settings["company_gstin"],
 }
 bank_details = {
-    "bank_name": settings["bank_name"],
-    "account_name": settings["account_name"],
-    "account_no": settings["account_no"],
-    "ifsc": settings["ifsc_code"],
-    "upi": settings["upi_id"],
+    "bank_name": settings["bank_name"], "account_name": settings["account_name"],
+    "account_no": settings["account_no"], "ifsc": settings["ifsc_code"], "upi": settings["upi_id"],
 }
-terms_conditions = [
-    term.strip() for term in settings["terms_conditions"].splitlines() if term.strip()
-]
+terms = [x.strip() for x in settings["terms_conditions"].splitlines() if x.strip()]
 
 if st.button("Generate Invoice PDF and Send Email"):
     if not customer_name.strip():
@@ -810,138 +576,54 @@ if st.button("Generate Invoice PDF and Send Email"):
     if taxable_value <= 0:
         st.error("Please enter product quantity and rate correctly.")
         st.stop()
-
-    customer_details = {
-        "name": customer_name,
-        "address": customer_address,
-        "phone": customer_phone,
-        "whatsapp": customer_whatsapp,
-        "email": customer_email,
-        "gstin": customer_gstin,
+    customer = {
+        "name": customer_name, "address": customer_address, "phone": customer_phone,
+        "whatsapp": customer_whatsapp, "email": customer_email, "gstin": customer_gstin,
     }
-    invoice_details = {
-        "invoice_title": settings["invoice_title"],
-        "invoice_no": invoice_no,
+    invoice = {
+        "invoice_title": settings["invoice_title"], "invoice_no": invoice_no,
         "invoice_date": invoice_date.strftime("%d-%m-%Y"),
-        "place_of_supply": place_of_supply,
-        "payment_status": payment_status,
+        "place_of_supply": place_of_supply, "payment_status": payment_status,
     }
     totals = {
-        "taxable_value": taxable_value,
-        "gst_amount": gst_amount,
-        "packing_charges": packing_charges,
-        "grand_total": grand_total,
+        "taxable_value": taxable_value, "gst_amount": gst_amount,
+        "packing_charges": packing_charges, "grand_total": grand_total,
     }
-
-    pdf_path = generate_invoice_pdf(
-        company_details, customer_details, invoice_details,
-        product_rows, totals, bank_details, terms_conditions
-    )
-
+    pdf_path = generate_invoice_pdf(company_details, customer, invoice, product_rows, totals, bank_details, terms)
     save_invoice_history({
         "created_on": datetime.now().strftime("%d-%m-%Y %H:%M:%S"),
-        "invoice_no": invoice_no,
-        "invoice_date": invoice_date.strftime("%d-%m-%Y"),
-        "customer_name": customer_name,
-        "customer_phone": customer_phone,
-        "customer_email": customer_email,
-        "taxable_value": taxable_value,
-        "gst_amount": gst_amount,
-        "packing_charges": packing_charges,
-        "grand_total": grand_total,
-        "pdf_file": str(pdf_path),
+        "invoice_no": invoice_no, "invoice_date": invoice_date.strftime("%d-%m-%Y"),
+        "customer_name": customer_name, "customer_phone": customer_phone,
+        "customer_email": customer_email, "taxable_value": taxable_value,
+        "gst_amount": gst_amount, "packing_charges": packing_charges,
+        "grand_total": grand_total, "pdf_file": str(pdf_path),
     })
-
-    st.markdown(
-        f'<div class="success-box">Invoice PDF generated successfully: {pdf_path.name}</div>',
-        unsafe_allow_html=True,
-    )
-
-    with open(pdf_path, "rb") as pdf_file:
-        st.download_button(
-            label="Download Invoice PDF", data=pdf_file.read(),
-            file_name=pdf_path.name, mime="application/pdf"
-        )
-
-    template_values = {
-        "company_name": settings["company_name"],
-        "customer_name": customer_name,
-        "invoice_no": invoice_no,
-        "invoice_date": invoice_date.strftime("%d-%m-%Y"),
+    st.markdown(f'<div class="success-box">Invoice PDF generated successfully: {pdf_path.name}</div>', unsafe_allow_html=True)
+    st.download_button("Download Invoice PDF", pdf_path.read_bytes(), pdf_path.name, "application/pdf")
+    values = {
+        "company_name": settings["company_name"], "customer_name": customer_name,
+        "invoice_no": invoice_no, "invoice_date": invoice_date.strftime("%d-%m-%Y"),
         "grand_total": format_inr(grand_total),
     }
-    email_subject = render_template(settings["email_subject_template"], **template_values)
-    email_body = render_template(settings["email_message_template"], **template_values)
-
-    recipients = [settings["company_email"]]
-    if customer_email.strip():
-        recipients.append(customer_email.strip())
-
+    recipients = [settings["company_email"]] + ([customer_email.strip()] if customer_email.strip() else [])
     if sender_password:
-        email_success, email_message = send_invoice_email(
+        success, message = send_invoice_email(
             sender_email, sender_password, recipients,
-            email_subject, email_body, pdf_path
+            render_template(settings["email_subject_template"], **values),
+            render_template(settings["email_message_template"], **values), pdf_path,
         )
-        if email_success:
-            st.success("Invoice email sent successfully.")
-        else:
-            st.warning(f"Invoice created, but email sending failed: {email_message}")
+        st.success(message) if success else st.warning(f"Invoice created, but email failed: {message}")
     else:
         st.warning("Invoice created. Email was not sent because the email app password is not set.")
-
-    whatsapp_message = render_template(
-        settings["whatsapp_message_template"], **template_values
+    whatsapp_link = generate_whatsapp_link(
+        customer_whatsapp, render_template(settings["whatsapp_message_template"], **values)
     )
-    whatsapp_link = generate_whatsapp_link(customer_whatsapp, whatsapp_message)
     if whatsapp_link:
         st.link_button("Share Invoice Details on WhatsApp", whatsapp_link)
-    else:
-        st.info("Enter a customer WhatsApp number to enable WhatsApp sharing.")
 
-
-# =========================================================
-# HISTORY SECTION
-# =========================================================
-
-st.markdown('<div class="section-card">', unsafe_allow_html=True)
 st.subheader("Invoice History")
-if HISTORY_FILE.exists():
-    with open(HISTORY_FILE, mode="r", encoding="utf-8") as file:
-        history_content = file.read()
-    st.download_button(
-        label="Download Invoice History CSV", data=history_content,
-        file_name="invoice_history.csv", mime="text/csv"
-    )
+if HISTORY_FILE.exists() and HISTORY_FILE.is_file():
+    st.download_button("Download Invoice History CSV", HISTORY_FILE.read_text(encoding="utf-8"), "invoice_history.csv", "text/csv")
     st.caption("Invoice history is saved inside the invoices folder.")
 else:
     st.caption("No invoice history found yet.")
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-else:
-    st.caption("No invoice history found yet.")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-    # One blank line after the company name
-    Spacer(1, 5),
-
-    Paragraph(
-        escape_pdf_text(company_details["tagline"]),
-        style_subtitle,
-    ),
-    Paragraph(
-        escape_pdf_text(company_details["address"]),
-        style_subtitle,
-    ),
-    Paragraph(
-        f"Phone: {escape_pdf_text(company_details['phone'])}  |  "
-        f"Email: {escape_pdf_text(company_details['email'])}",
-        style_subtitle,
-    ),
-    Paragraph(
-        f"GSTIN: {escape_pdf_text(company_details['gstin'])}",
-        style_subtitle,
-    ),
-]
