@@ -919,11 +919,10 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-company_block = [
-    Paragraph(
-        escape_pdf_text(company_details["name"]),
-        style_title,
-    ),
+else:
+    st.caption("No invoice history found yet.")
+
+st.markdown("</div>", unsafe_allow_html=True)
 
     # One blank line after the company name
     Spacer(1, 5),
