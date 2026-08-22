@@ -918,18 +918,6 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
-{
-     "version": "0.2.0",
-     "configurations": [
-       {
-         "name": "Streamlit: EcoQuill App",
-         "type": "debugpy",
-         "request": "launch",
-         "module": "streamlit",
-         "args": ["run", "${workspaceFolder}/eco_quill_invoice_app/app.py"]
-       }
-     ]
-   }
 
 company_block = [
     Paragraph(
