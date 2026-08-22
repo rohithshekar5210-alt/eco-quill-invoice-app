@@ -32,14 +32,16 @@ st.set_page_config(
 
 BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
-ASSETS_DIR.mkdir(exist_ok=True)
+if not ASSETS_DIR.exists():
+    ASSETS_DIR.mkdir(parents=True)
 
 SETTINGS_FILE = BASE_DIR / "business_settings.json"
 LOGO_PATH = ASSETS_DIR / "business_logo.png"
 SIGNATURE_PATH = ASSETS_DIR / "digital_signature.png"
 
 INVOICE_DIR = BASE_DIR / "invoices"
-INVOICE_DIR.mkdir(exist_ok=True)
+if not INVOICE_DIR.exists():
+    INVOICE_DIR.mkdir(parents=True)
 HISTORY_FILE = INVOICE_DIR / "invoice_history.csv"
 
 
